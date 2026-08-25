@@ -6,6 +6,8 @@ import { Tab1ActionLedgersView } from './Tab1ActionLedgersView';
 import { Tab3BlacklistView } from './Tab3BlacklistView';
 import { InstitutionSearchSelect, ALL_INSTITUTIONS_DATABASE } from './InstitutionSearchSelect';
 import { Step3KeywordConfigView, Mode2GroupItem } from './Step3KeywordConfigView';
+import { UnifiedActionInstitutionListView } from './UnifiedActionInstitutionListView';
+import { getInstitutionTerritoryLedgers, getInstitutionRegion, getInstitutionType } from '../utils/territoryLedgers';
 
 export interface InstitutionLedgerScopeConfig {
   institutionName: string;
@@ -64,7 +66,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
   const [multipleInstitutions, setMultipleInstitutions] = useState<string[]>(
     initialPlan?.type === '统一行动' && initialPlan.institution
       ? initialPlan.institution.split(/、|,|;/).map(s => s.trim()).filter(Boolean)
-      : [AVAILABLE_INSTITUTIONS[0], AVAILABLE_INSTITUTIONS[1]]
+      : [AVAILABLE_INSTITUTIONS[0], AVAILABLE_INSTITUTIONS[1], AVAILABLE_INSTITUTIONS[2], AVAILABLE_INSTITUTIONS[3]]
   );
   const [planName, setPlanName] = useState<string>(initialPlan?.name || '');
   const [inspectType, setInspectType] = useState<'快速排查' | '深度排查'>(
@@ -82,21 +84,15 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
     initialPlan?.scope === '全国范围' ? 'nationwide' : 'custom'
   );
 
-  // Helper to build initial ledger config for an institution
+  // Helper to build initial ledger config for an institution (默认应用属地台账)
   const createInitialInstConfig = (instName: string): InstitutionLedgerScopeConfig => {
-    // If editing and matching, seed with initial items
-    let initialTab1: (LedgerItem & { importSource: '属地导入' | '手动追加' })[] = [];
-    if (initialPlan && initialPlan.institution?.includes(instName)) {
-      initialTab1 = initialMockLedgers.slice(0, 6).map((item, idx) => ({
-        ...item,
-        importSource: idx % 2 === 0 ? '属地导入' : '手动追加',
-      }));
-    }
+    // 默认应用各机构属地台账
+    const defaultTerritoryLedgers = getInstitutionTerritoryLedgers(instName);
 
     return {
       institutionName: instName,
       activeTab: 'tab1',
-      tab1Ledgers: initialTab1,
+      tab1Ledgers: defaultTerritoryLedgers,
       tab3Blacklist: [],
       tab2Filter: {
         nameOrId: '',
@@ -130,6 +126,9 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
     return map;
   });
 
+  // Selected institution for detail configuration in unified action mode (null = list view)
+  const [selectedInstForDetail, setSelectedInstForDetail] = useState<string | null>(null);
+
   // Active institution tab for unified action mode
   const [activeInstTab, setActiveInstTab] = useState<string>(AVAILABLE_INSTITUTIONS[0]);
 
@@ -138,8 +137,8 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
     if (actionType === '机构行动') {
       return singleInstitution;
     }
-    return activeInstTab;
-  }, [actionType, singleInstitution, activeInstTab]);
+    return selectedInstForDetail || activeInstTab || multipleInstitutions[0] || AVAILABLE_INSTITUTIONS[0];
+  }, [actionType, singleInstitution, selectedInstForDetail, activeInstTab, multipleInstitutions]);
 
   // Current active institution's ledger configuration
   const currentInstConfig: InstitutionLedgerScopeConfig = useMemo(() => {
@@ -161,6 +160,39 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
         [currentInstName]: updated,
       };
     });
+  };
+
+  // Reset single institution to territory defaults
+  const handleResetInstitutionTerritory = (instName: string) => {
+    const freshConfig = createInitialInstConfig(instName);
+    setInstConfigs(prev => ({
+      ...prev,
+      [instName]: freshConfig,
+    }));
+  };
+
+  // Reset all institutions to territory defaults
+  const handleResetAllTerritory = () => {
+    setInstConfigs(prev => {
+      const next = { ...prev };
+      multipleInstitutions.forEach(inst => {
+        next[inst] = createInitialInstConfig(inst);
+      });
+      return next;
+    });
+  };
+
+  // Remove an institution from unified action
+  const handleRemoveInstitution = (instName: string) => {
+    if (multipleInstitutions.length <= 1) {
+      showToast('统一行动请至少保留一个机构');
+      return;
+    }
+    setMultipleInstitutions(prev => prev.filter(i => i !== instName));
+    if (selectedInstForDetail === instName) {
+      setSelectedInstForDetail(null);
+    }
+    showToast(`已从统一行动中移除机构【${instName}】`);
   };
 
   // ----------------------------------------------------
@@ -551,6 +583,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
       if (count === 0) {
         showToast(`机构【${inst}】尚未配置本专项行动台账（数量为0），请至少导入1条台账`);
         if (actionType === '统一行动') {
+          setSelectedInstForDetail(inst);
           setActiveInstTab(inst);
           // switch to tab2 for fast config
           setInstConfigs(prev => ({
@@ -1355,200 +1388,413 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
       {/* ---------------------------------------------------- */}
       {currentStep === 2 && (
         <div className="flex flex-col bg-white space-y-3.5 text-xs">
-          {/* Branch B: Multiple Institutions Tab Bar if Unified Action */}
-          {actionType === '统一行动' && (
-            <div className="flex items-center space-x-2 border-b border-gray-200 pb-2 overflow-x-auto">
-              <span className="text-xs font-bold text-gray-700 shrink-0 mr-1">机构标签：</span>
-              {multipleInstitutions.map(inst => {
-                const cfg = instConfigs[inst] || createInitialInstConfig(inst);
-                const isActive = activeInstTab === inst;
-                const count = cfg.tab1Ledgers.length;
+          {/* Branch A: 统一行动 - 机构列表视图 (当 selectedInstForDetail === null) */}
+          {actionType === '统一行动' && selectedInstForDetail === null && (
+            <UnifiedActionInstitutionListView
+              institutions={multipleInstitutions}
+              instConfigs={instConfigs}
+              onSelectInstitution={inst => {
+                setSelectedInstForDetail(inst);
+                setActiveInstTab(inst);
+              }}
+              onResetInstitutionTerritory={handleResetInstitutionTerritory}
+              onResetAllTerritory={handleResetAllTerritory}
+              onRemoveInstitution={handleRemoveInstitution}
+              onOpenManageInstitutions={() => setCurrentStep(1)}
+              onToast={showToast}
+            />
+          )}
 
-                return (
+          {/* Branch B: 统一行动 - 单机构详情调整视图 (当 selectedInstForDetail !== null) */}
+          {actionType === '统一行动' && selectedInstForDetail !== null && (
+            <div className="flex flex-col space-y-3.5">
+              {/* Detail Navigation Header */}
+              <div className="bg-gradient-to-r from-blue-50/80 via-white to-blue-50/40 border border-blue-100 rounded-lg p-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-center space-x-3">
                   <button
-                    key={inst}
                     type="button"
-                    onClick={() => setActiveInstTab(inst)}
-                    className={`px-3 py-1.5 rounded text-xs font-medium cursor-pointer transition flex items-center space-x-1.5 shrink-0 ${
-                      isActive
-                        ? 'bg-[#1677ff] text-white shadow-xs'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    onClick={() => setSelectedInstForDetail(null)}
+                    className="px-3 py-1.5 bg-white hover:bg-gray-50 text-gray-700 hover:text-[#1677ff] border border-gray-300 hover:border-blue-300 rounded text-xs font-medium cursor-pointer shadow-2xs transition flex items-center space-x-1.5"
+                  >
+                    <i className="fa-solid fa-arrow-left text-xs"></i>
+                    <span>返回机构列表</span>
+                  </button>
+
+                  <div className="h-5 w-px bg-gray-200"></div>
+
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-500 font-medium">配置机构：</span>
+                    <select
+                      value={currentInstName}
+                      onChange={e => {
+                        setSelectedInstForDetail(e.target.value);
+                        setActiveInstTab(e.target.value);
+                      }}
+                      className="border border-blue-200 rounded px-2.5 py-1 bg-white text-gray-900 font-bold text-xs focus:outline-none focus:border-[#1677ff] cursor-pointer shadow-2xs max-w-xs truncate"
+                    >
+                      {multipleInstitutions.map((inst, idx) => (
+                        <option key={inst} value={inst}>
+                          [{idx + 1}/{multipleInstitutions.length}] {inst}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="px-2 py-0.5 rounded text-[11px] bg-blue-50 text-blue-700 border border-blue-200 font-medium">
+                      {getInstitutionRegion(currentInstName)} · {getInstitutionType(currentInstName)}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetInstitutionTerritory(currentInstName);
+                      showToast(`已将【${currentInstName}】重置为默认属地台账！`);
+                    }}
+                    className="px-2.5 py-1 text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded text-xs font-medium cursor-pointer transition flex items-center space-x-1"
+                    title="重置当前机构为默认属地台账"
+                  >
+                    <i className="fa-solid fa-rotate-left text-xs"></i>
+                    <span>重置为属地台账</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedInstForDetail(null)}
+                    className="px-3 py-1.5 bg-[#1677ff] hover:bg-[#4096ff] text-white rounded text-xs font-medium cursor-pointer transition shadow-2xs flex items-center space-x-1"
+                  >
+                    <i className="fa-solid fa-check text-xs"></i>
+                    <span>完成调整并返回列表</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* 3 平级 Tabs: 本专项行动台账 | 黑名单 | 台账检索 */}
+              <div className="flex items-center justify-between border-b border-gray-200">
+                <div className="flex items-center space-x-6">
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab1' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'tab1'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
                     }`}
                   >
-                    <span className="truncate max-w-[200px]" title={inst}>
-                      {inst}
-                    </span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                        isActive ? 'bg-white text-[#1677ff]' : count > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-600'
-                      }`}
-                    >
-                      {count}条
-                    </span>
+                    本专项行动台账 ({currentInstConfig.tab1Ledgers.length})
+                    {currentInstConfig.activeTab === 'tab1' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
                   </button>
-                );
-              })}
-            </div>
-          )}
 
-          {/* 3 平级 Tabs: 本专项行动台账 | 台账数据源 | 黑名单 */}
-          <div className="flex items-center justify-between border-b border-gray-200">
-            <div className="flex items-center space-x-6">
-              <button
-                type="button"
-                onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab1' }))}
-                className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
-                  currentInstConfig.activeTab === 'tab1'
-                    ? 'text-[#1677ff]'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                本专项行动台账 ({currentInstConfig.tab1Ledgers.length})
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab3' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'tab3'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    黑名单 ({currentInstConfig.tab3Blacklist.length})
+                    {currentInstConfig.activeTab === 'tab3' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'tab2'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    台账检索
+                    {currentInstConfig.activeTab === 'tab2' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Reset Button placed on Tab1 */}
                 {currentInstConfig.activeTab === 'tab1' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirmModal(true)}
+                    className="mb-1 text-xs text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2.5 py-1 rounded cursor-pointer transition font-medium flex items-center space-x-1"
+                    title="清空台账并重置台账"
+                  >
+                    <i className="fa-solid fa-rotate-left text-[11px]"></i>
+                    <span>重置台账</span>
+                  </button>
                 )}
-              </button>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab3' }))}
-                className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
-                  currentInstConfig.activeTab === 'tab3'
-                    ? 'text-[#1677ff]'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                黑名单 ({currentInstConfig.tab3Blacklist.length})
-                {currentInstConfig.activeTab === 'tab3' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
-                )}
-              </button>
+              {/* TAB 1: 本行动的台账 */}
+              {currentInstConfig.activeTab === 'tab1' && (
+                <Tab1ActionLedgersView
+                  ledgers={currentInstConfig.tab1Ledgers}
+                  selectedIds={currentInstConfig.tab1SelectedIds}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tab1SelectedIds: ids }))
+                  }
+                  onMoveToBlacklist={handleMoveTab1ToBlacklist}
+                  onRemoveFromTab1={handleRemoveFromTab1}
+                  onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
+                  onToast={showToast}
+                />
+              )}
 
-              <button
-                type="button"
-                onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
-                className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
-                  currentInstConfig.activeTab === 'tab2'
-                    ? 'text-[#1677ff]'
-                    : 'text-gray-500 hover:text-gray-800'
-                }`}
-              >
-                台账检索
-                {currentInstConfig.activeTab === 'tab2' && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
-                )}
-              </button>
+              {/* TAB 3: 黑名单 */}
+              {currentInstConfig.activeTab === 'tab3' && (
+                <Tab3BlacklistView
+                  blacklists={currentInstConfig.tab3Blacklist}
+                  selectedIds={currentInstConfig.tab3SelectedIds}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tab3SelectedIds: ids }))
+                  }
+                  onRestoreToTab1={handleRestoreFromBlacklist}
+                  onDeleteFromBlacklist={handleDeleteFromBlacklist}
+                  onToast={showToast}
+                />
+              )}
+
+              {/* TAB 2: 台账检索 */}
+              {currentInstConfig.activeTab === 'tab2' && (
+                <Tab2DataSourceView
+                  currentInstName={currentInstName}
+                  selectedIds={currentInstConfig.tab2SelectedIds}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tab2SelectedIds: ids }))
+                  }
+                  onImportToTab1={selectedItems => {
+                    const existingIds = new Set(currentInstConfig.tab1Ledgers.map(l => l.id));
+                    const newItems = selectedItems
+                      .filter(item => !existingIds.has(item.id))
+                      .map(item => ({
+                        ...item,
+                        fans: item.fans || item.fansCount || 0,
+                        collectStatus: item.collectStatus || '已采集',
+                        ledgerStatus: item.ledgerStatus || '正常',
+                        importSource: '属地导入' as const,
+                      }));
+                    const idsToRemoveFromBlacklist = new Set(selectedItems.map(i => i.id));
+                    updateCurrentInstConfig(prev => ({
+                      tab1Ledgers: [...prev.tab1Ledgers, ...newItems],
+                      tab3Blacklist: prev.tab3Blacklist.filter(b => !idsToRemoveFromBlacklist.has(b.id)),
+                      tab2SelectedIds: [],
+                    }));
+                    showToast(
+                      `已将 ${newItems.length} 条台账加入【本专项行动台账】`
+                    );
+                  }}
+                  onDirectBlacklist={selectedItems => {
+                    const existingBIds = new Set(currentInstConfig.tab3Blacklist.map(l => l.id));
+                    const newBItems = selectedItems
+                      .filter(item => !existingBIds.has(item.id))
+                      .map(item => ({
+                        ...item,
+                        fans: item.fans || item.fansCount || 0,
+                        collectStatus: item.collectStatus || '已采集',
+                        ledgerStatus: item.ledgerStatus || '正常',
+                        importSource: '属地导入' as const,
+                        blacklistReason: '从台账检索直接加入行动黑名单',
+                      }));
+                    const idsToRemove = new Set(selectedItems.map(i => i.id));
+                    updateCurrentInstConfig(prev => ({
+                      tab3Blacklist: [...prev.tab3Blacklist, ...newBItems],
+                      tab1Ledgers: prev.tab1Ledgers.filter(l => !idsToRemove.has(l.id)),
+                      tab2SelectedIds: [],
+                    }));
+                    showToast(
+                      `已将 ${newBItems.length} 条台账加入【黑名单】`
+                    );
+                  }}
+                  onToast={showToast}
+                />
+              )}
             </div>
-
-            {/* Reset Button placed on Tab1 */}
-            {currentInstConfig.activeTab === 'tab1' && (
-              <button
-                type="button"
-                onClick={() => setShowResetConfirmModal(true)}
-                className="mb-1 text-xs text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2.5 py-1 rounded cursor-pointer transition font-medium flex items-center space-x-1"
-                title="清空台账并重置台账"
-              >
-                <i className="fa-solid fa-rotate-left text-[11px]"></i>
-                <span>重置台账</span>
-              </button>
-            )}
-          </div>
-
-          {/* ---------------------------------------------------- */}
-          {/* TAB 1: 本行动的台账 (持久快照，扫描对象) */}
-          {/* ---------------------------------------------------- */}
-          {currentInstConfig.activeTab === 'tab1' && (
-            <Tab1ActionLedgersView
-              ledgers={currentInstConfig.tab1Ledgers}
-              selectedIds={currentInstConfig.tab1SelectedIds}
-              onSelectionChange={ids =>
-                updateCurrentInstConfig(() => ({ tab1SelectedIds: ids }))
-              }
-              onMoveToBlacklist={handleMoveTab1ToBlacklist}
-              onRemoveFromTab1={handleRemoveFromTab1}
-              onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
-              onToast={showToast}
-            />
           )}
 
-          {/* ---------------------------------------------------- */}
-          {/* TAB 3: 黑名单 (本行动私有) */}
-          {/* ---------------------------------------------------- */}
-          {currentInstConfig.activeTab === 'tab3' && (
-            <Tab3BlacklistView
-              blacklists={currentInstConfig.tab3Blacklist}
-              selectedIds={currentInstConfig.tab3SelectedIds}
-              onSelectionChange={ids =>
-                updateCurrentInstConfig(() => ({ tab3SelectedIds: ids }))
-              }
-              onRestoreToTab1={handleRestoreFromBlacklist}
-              onDeleteFromBlacklist={handleDeleteFromBlacklist}
-              onToast={showToast}
-            />
+          {/* Branch C: 机构行动 (单机构行动) */}
+          {actionType === '机构行动' && (
+            <div className="flex flex-col space-y-3.5">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-gray-700">机构行动台账：</span>
+                  <span className="font-bold text-gray-900">{singleInstitution}</span>
+                  <span className="px-2 py-0.5 rounded text-[11px] bg-green-50 text-green-700 border border-green-200">
+                    默认应用属地台账 ({currentInstConfig.tab1Ledgers.length}条)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResetInstitutionTerritory(singleInstitution);
+                    showToast(`已将【${singleInstitution}】重置为默认属地台账！`);
+                  }}
+                  className="px-2.5 py-1 text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 rounded text-xs font-medium cursor-pointer transition flex items-center space-x-1"
+                >
+                  <i className="fa-solid fa-rotate-left text-xs"></i>
+                  <span>恢复属地默认</span>
+                </button>
+              </div>
+
+              {/* 3 平级 Tabs: 本专项行动台账 | 黑名单 | 台账检索 */}
+              <div className="flex items-center justify-between border-b border-gray-200">
+                <div className="flex items-center space-x-6">
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab1' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'tab1'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    本专项行动台账 ({currentInstConfig.tab1Ledgers.length})
+                    {currentInstConfig.activeTab === 'tab1' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab3' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'tab3'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    黑名单 ({currentInstConfig.tab3Blacklist.length})
+                    {currentInstConfig.activeTab === 'tab3' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'tab2'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    台账检索
+                    {currentInstConfig.activeTab === 'tab2' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Reset Button placed on Tab1 */}
+                {currentInstConfig.activeTab === 'tab1' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirmModal(true)}
+                    className="mb-1 text-xs text-orange-600 hover:text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 px-2.5 py-1 rounded cursor-pointer transition font-medium flex items-center space-x-1"
+                    title="清空台账并重置台账"
+                  >
+                    <i className="fa-solid fa-rotate-left text-[11px]"></i>
+                    <span>重置台账</span>
+                  </button>
+                )}
+              </div>
+
+              {/* TAB 1: 本行动的台账 */}
+              {currentInstConfig.activeTab === 'tab1' && (
+                <Tab1ActionLedgersView
+                  ledgers={currentInstConfig.tab1Ledgers}
+                  selectedIds={currentInstConfig.tab1SelectedIds}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tab1SelectedIds: ids }))
+                  }
+                  onMoveToBlacklist={handleMoveTab1ToBlacklist}
+                  onRemoveFromTab1={handleRemoveFromTab1}
+                  onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
+                  onToast={showToast}
+                />
+              )}
+
+              {/* TAB 3: 黑名单 */}
+              {currentInstConfig.activeTab === 'tab3' && (
+                <Tab3BlacklistView
+                  blacklists={currentInstConfig.tab3Blacklist}
+                  selectedIds={currentInstConfig.tab3SelectedIds}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tab3SelectedIds: ids }))
+                  }
+                  onRestoreToTab1={handleRestoreFromBlacklist}
+                  onDeleteFromBlacklist={handleDeleteFromBlacklist}
+                  onToast={showToast}
+                />
+              )}
+
+              {/* TAB 2: 台账检索 */}
+              {currentInstConfig.activeTab === 'tab2' && (
+                <Tab2DataSourceView
+                  currentInstName={currentInstName}
+                  selectedIds={currentInstConfig.tab2SelectedIds}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tab2SelectedIds: ids }))
+                  }
+                  onImportToTab1={selectedItems => {
+                    const existingIds = new Set(currentInstConfig.tab1Ledgers.map(l => l.id));
+                    const newItems = selectedItems
+                      .filter(item => !existingIds.has(item.id))
+                      .map(item => ({
+                        ...item,
+                        fans: item.fans || item.fansCount || 0,
+                        collectStatus: item.collectStatus || '已采集',
+                        ledgerStatus: item.ledgerStatus || '正常',
+                        importSource: '属地导入' as const,
+                      }));
+                    const idsToRemoveFromBlacklist = new Set(selectedItems.map(i => i.id));
+                    updateCurrentInstConfig(prev => ({
+                      tab1Ledgers: [...prev.tab1Ledgers, ...newItems],
+                      tab3Blacklist: prev.tab3Blacklist.filter(b => !idsToRemoveFromBlacklist.has(b.id)),
+                      tab2SelectedIds: [],
+                    }));
+                    showToast(
+                      `已将 ${newItems.length} 条台账加入【本专项行动台账】`
+                    );
+                  }}
+                  onDirectBlacklist={selectedItems => {
+                    const existingBIds = new Set(currentInstConfig.tab3Blacklist.map(l => l.id));
+                    const newBItems = selectedItems
+                      .filter(item => !existingBIds.has(item.id))
+                      .map(item => ({
+                        ...item,
+                        fans: item.fans || item.fansCount || 0,
+                        collectStatus: item.collectStatus || '已采集',
+                        ledgerStatus: item.ledgerStatus || '正常',
+                        importSource: '属地导入' as const,
+                        blacklistReason: '从台账检索直接加入行动黑名单',
+                      }));
+                    const idsToRemove = new Set(selectedItems.map(i => i.id));
+                    updateCurrentInstConfig(prev => ({
+                      tab3Blacklist: [...prev.tab3Blacklist, ...newBItems],
+                      tab1Ledgers: prev.tab1Ledgers.filter(l => !idsToRemove.has(l.id)),
+                      tab2SelectedIds: [],
+                    }));
+                    showToast(
+                      `已将 ${newBItems.length} 条台账加入【黑名单】`
+                    );
+                  }}
+                  onToast={showToast}
+                />
+              )}
+            </div>
           )}
+        </div>
+      )}
 
-          {/* ---------------------------------------------------- */}
-          {/* TAB 2: 台账检索 (临时工作台) */}
-          {/* ---------------------------------------------------- */}
-          {currentInstConfig.activeTab === 'tab2' && (
-            <Tab2DataSourceView
-              currentInstName={currentInstName}
-              selectedIds={currentInstConfig.tab2SelectedIds}
-              onSelectionChange={ids =>
-                updateCurrentInstConfig(() => ({ tab2SelectedIds: ids }))
-              }
-              onImportToTab1={selectedItems => {
-                const existingIds = new Set(currentInstConfig.tab1Ledgers.map(l => l.id));
-                const newItems = selectedItems
-                  .filter(item => !existingIds.has(item.id))
-                  .map(item => ({
-                    ...item,
-                    fans: item.fans || item.fansCount || 0,
-                    collectStatus: item.collectStatus || '已采集',
-                    ledgerStatus: item.ledgerStatus || '正常',
-                    importSource: '属地导入' as const,
-                  }));
-                const idsToRemoveFromBlacklist = new Set(selectedItems.map(i => i.id));
-                updateCurrentInstConfig(prev => ({
-                  tab1Ledgers: [...prev.tab1Ledgers, ...newItems],
-                  tab3Blacklist: prev.tab3Blacklist.filter(b => !idsToRemoveFromBlacklist.has(b.id)),
-                  tab2SelectedIds: [],
-                }));
-                showToast(
-                  `已将 ${newItems.length} 条台账加入【本专项行动台账】`
-                );
-              }}
-              onDirectBlacklist={selectedItems => {
-                const existingBIds = new Set(currentInstConfig.tab3Blacklist.map(l => l.id));
-                const newBItems = selectedItems
-                  .filter(item => !existingBIds.has(item.id))
-                  .map(item => ({
-                    ...item,
-                    fans: item.fans || item.fansCount || 0,
-                    collectStatus: item.collectStatus || '已采集',
-                    ledgerStatus: item.ledgerStatus || '正常',
-                    importSource: '属地导入' as const,
-                    blacklistReason: '从台账检索直接加入行动黑名单',
-                  }));
-                const idsToRemove = new Set(selectedItems.map(i => i.id));
-                updateCurrentInstConfig(prev => ({
-                  tab3Blacklist: [...prev.tab3Blacklist, ...newBItems],
-                  tab1Ledgers: prev.tab1Ledgers.filter(l => !idsToRemove.has(l.id)),
-                  tab2SelectedIds: [],
-                }));
-                showToast(
-                  `已将 ${newBItems.length} 条台账加入【黑名单】`
-                );
-              }}
-              onToast={showToast}
-            />
-          )}
-
-          </div>
-        )}
-
-        {/* ---------------------------------------------------- */}
-        {/* STEP 3: 设置关键词 (左右分栏：左侧设置关键词，右侧数据预览) */}
+      {/* ---------------------------------------------------- */}
+      {/* STEP 3: 设置关键词 (左右分栏：左侧设置关键词，右侧数据预览) */}
         {/* ---------------------------------------------------- */}
         {currentStep === 3 && (
           <div className="grid grid-cols-12 gap-5 w-full text-xs pb-4">
