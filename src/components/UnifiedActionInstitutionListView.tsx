@@ -33,6 +33,7 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
     let totalLedgers = 0;
     let localImportTotal = 0;
     let manualAddTotal = 0;
+    let whitelistTotal = 0;
     let blacklistTotal = 0;
     let modifiedCount = 0;
     let emptyCount = 0;
@@ -41,6 +42,7 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
       const cfg = instConfigs[inst];
       if (cfg) {
         const t1Count = cfg.tab1Ledgers.length;
+        const wCount = (cfg.tabWhitelist || []).length;
         const bCount = cfg.tab3Blacklist.length;
         const localCount = cfg.tab1Ledgers.filter(l => l.importSource === '属地导入').length;
         const manualCount = cfg.tab1Ledgers.filter(l => l.importSource === '手动追加').length;
@@ -48,11 +50,12 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
         totalLedgers += t1Count;
         localImportTotal += localCount;
         manualAddTotal += manualCount;
+        whitelistTotal += wCount;
         blacklistTotal += bCount;
 
         if (t1Count === 0) {
           emptyCount++;
-        } else if (manualCount > 0 || bCount > 0) {
+        } else if (manualCount > 0 || bCount > 0 || wCount > 0) {
           modifiedCount++;
         }
       }
@@ -63,6 +66,7 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
       totalLedgers,
       localImportTotal,
       manualAddTotal,
+      whitelistTotal,
       blacklistTotal,
       modifiedCount,
       emptyCount,
@@ -123,6 +127,10 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
           <div className="bg-white px-3 py-1.5 rounded-md border border-blue-200 shadow-2xs text-center">
             <div className="text-[10px] text-blue-600 font-medium">已纳入行动台账</div>
             <div className="text-sm font-bold text-[#1677ff]">{stats.totalLedgers} 条</div>
+          </div>
+          <div className="bg-white px-3 py-1.5 rounded-md border border-emerald-200 shadow-2xs text-center">
+            <div className="text-[10px] text-emerald-600 font-medium">白名单</div>
+            <div className="text-sm font-bold text-emerald-700">{stats.whitelistTotal} 条</div>
           </div>
           <div className="bg-white px-3 py-1.5 rounded-md border border-red-200 shadow-2xs text-center">
             <div className="text-[10px] text-red-500 font-medium">排除黑名单</div>
@@ -242,6 +250,7 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
                 <th className="py-3 px-4 w-36">所属区域</th>
                 <th className="py-3 px-4 w-32 text-center">属地默认台账</th>
                 <th className="py-3 px-4 w-40 text-center">本行动台账 (已纳入)</th>
+                <th className="py-3 px-4 w-28 text-center">白名单</th>
                 <th className="py-3 px-4 w-28 text-center">黑名单</th>
                 <th className="py-3 px-4 w-32 text-center">有效排查台账</th>
                 <th className="py-3 px-4 w-36 text-center">配置状态</th>
@@ -255,12 +264,13 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
                   const t1Count = cfg ? cfg.tab1Ledgers.length : 0;
                   const localCount = cfg ? cfg.tab1Ledgers.filter(l => l.importSource === '属地导入').length : 0;
                   const manualCount = cfg ? cfg.tab1Ledgers.filter(l => l.importSource === '手动追加').length : 0;
+                  const wCount = cfg ? (cfg.tabWhitelist || []).length : 0;
                   const bCount = cfg ? cfg.tab3Blacklist.length : 0;
                   const effectiveCount = Math.max(0, t1Count - bCount);
                   const region = getInstitutionRegion(inst);
                   const instType = getInstitutionType(inst);
 
-                  const isModified = manualCount > 0 || bCount > 0;
+                  const isModified = manualCount > 0 || bCount > 0 || wCount > 0;
                   const isEmpty = t1Count === 0;
 
                   return (
@@ -330,6 +340,17 @@ export const UnifiedActionInstitutionListView: React.FC<UnifiedActionInstitution
                             </span>
                           )}
                         </div>
+                      </td>
+
+                      {/* 白名单 */}
+                      <td className="py-3.5 px-4 text-center">
+                        {wCount > 0 ? (
+                          <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                            {wCount} 条
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 font-mono">0</span>
+                        )}
                       </td>
 
                       {/* 黑名单 */}

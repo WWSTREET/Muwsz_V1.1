@@ -7,6 +7,7 @@ export interface Tab2DataSourceViewProps {
   selectedIds: number[];
   onSelectionChange: (ids: number[]) => void;
   onImportToTab1: (selectedItems: LedgerItem[]) => void;
+  onAddToWhitelist?: (selectedItems: LedgerItem[]) => void;
   onDirectBlacklist: (selectedItems: LedgerItem[]) => void;
   onToast: (msg: string) => void;
 }
@@ -16,6 +17,7 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
   selectedIds,
   onSelectionChange,
   onImportToTab1,
+  onAddToWhitelist,
   onDirectBlacklist,
   onToast,
 }) => {
@@ -194,16 +196,20 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
     }
   };
 
-  // 加入专项台账（移除本页选中的数据，不跳转，并通知父组件更新）
+  // 加入白名单（移除本页选中的数据，不跳转，并通知父组件更新）
   const handleImportItems = (items: Tab2LedgerItem[]) => {
     if (items.length === 0) {
-      onToast('请先勾选需要加入专项台账的记录');
+      onToast('请先勾选需要加入白名单的记录');
       return;
     }
     const idsToRemove = new Set(items.map(i => i.id));
     setDataList(prev => prev.filter(i => !idsToRemove.has(i.id)));
     onSelectionChange(selectedIds.filter(id => !idsToRemove.has(id)));
-    onImportToTab1(items);
+    if (onAddToWhitelist) {
+      onAddToWhitelist(items);
+    } else {
+      onImportToTab1(items);
+    }
   };
 
   // 加入黑名单（移除本页选中的数据，不跳转，并通知父组件更新）
@@ -218,7 +224,7 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
     onDirectBlacklist(items);
   };
 
-  // 一键全部加入至专项台账
+  // 一键全部加入至专项台账 / 白名单
   const handleImportAllToTab1 = () => {
     if (displayList.length === 0) {
       onToast('当前无可用台账记录可加入');
@@ -598,7 +604,7 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
         </div>
       </div>
 
-      {/* 3. 操作条 (一键全部加入 / 勾选导入至本行动 / 加入黑名单) */}
+      {/* 3. 操作条 (一键全部加入 / 勾选导入至白名单 / 加入黑名单) */}
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center space-x-2">
           <span className="font-bold text-gray-800 text-xs">台账检索列表</span>
@@ -608,7 +614,7 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
         </div>
 
         <div className="flex items-center space-x-2.5">
-          {/* 新增：“一键全部加入至专项台账” */}
+          {/* “一键全部加入至专项台账” */}
           <button
             type="button"
             onClick={handleImportAllToTab1}
@@ -618,7 +624,7 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
             <span>一键全部加入至专项台账</span>
           </button>
 
-          {/* 将已勾选台账导入至专项台账 */}
+          {/* 将已勾选台账加入白名单 */}
           <button
             type="button"
             disabled={selectedIds.length === 0}
@@ -632,8 +638,8 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
                 : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
             }`}
           >
-            <i className="fa-solid fa-arrow-down-to-bracket"></i>
-            <span>将已勾选台账导入至专项台账 ({selectedIds.length})</span>
+            <i className="fa-solid fa-shield-halved"></i>
+            <span>将已勾选台账加入白名单 ({selectedIds.length})</span>
           </button>
 
           {/* 将已勾选台账直接加入黑名单 */}
@@ -826,7 +832,7 @@ export const Tab2DataSourceView: React.FC<Tab2DataSourceViewProps> = ({
                           onClick={() => handleImportItems([item])}
                           className="text-[#1677ff] hover:text-blue-700 font-medium cursor-pointer"
                         >
-                          加入专项台账
+                          加入白名单
                         </button>
                         <button
                           type="button"

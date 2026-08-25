@@ -4,6 +4,7 @@ import { PlanItem } from './SpecialPlanView';
 import { Tab2DataSourceView } from './Tab2DataSourceView';
 import { Tab1ActionLedgersView } from './Tab1ActionLedgersView';
 import { Tab3BlacklistView } from './Tab3BlacklistView';
+import { TabWhitelistView } from './TabWhitelistView';
 import { InstitutionSearchSelect, ALL_INSTITUTIONS_DATABASE } from './InstitutionSearchSelect';
 import { Step3KeywordConfigView, Mode2GroupItem } from './Step3KeywordConfigView';
 import { UnifiedActionInstitutionListView } from './UnifiedActionInstitutionListView';
@@ -11,8 +12,9 @@ import { getInstitutionTerritoryLedgers, getInstitutionRegion, getInstitutionTyp
 
 export interface InstitutionLedgerScopeConfig {
   institutionName: string;
-  activeTab: 'tab1' | 'tab2' | 'tab3';
+  activeTab: 'tab1' | 'whitelist' | 'tab2' | 'tab3';
   tab1Ledgers: (LedgerItem & { importSource: '属地导入' | '手动追加' })[];
+  tabWhitelist: (LedgerItem & { importSource: '属地导入' | '手动追加'; whitelistReason?: string })[];
   tab3Blacklist: (LedgerItem & { importSource: '属地导入' | '手动追加'; blacklistReason?: string })[];
   // Tab2 query state
   tab2Filter: {
@@ -33,6 +35,8 @@ export interface InstitutionLedgerScopeConfig {
   tab1SourceFilter: string;
   tab1GlobalStatusFilter: string;
   tab1SelectedIds: number[];
+  tabWhitelistSearchText: string;
+  tabWhitelistSelectedIds: number[];
   tab3SearchText: string;
   tab3SelectedIds: number[];
 }
@@ -93,6 +97,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
       institutionName: instName,
       activeTab: 'tab1',
       tab1Ledgers: defaultTerritoryLedgers,
+      tabWhitelist: [],
       tab3Blacklist: [],
       tab2Filter: {
         nameOrId: '',
@@ -112,6 +117,8 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
       tab1SourceFilter: '全部',
       tab1GlobalStatusFilter: '全部',
       tab1SelectedIds: [],
+      tabWhitelistSearchText: '',
+      tabWhitelistSelectedIds: [],
       tab3SearchText: '',
       tab3SelectedIds: [],
     };
@@ -516,6 +523,92 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
     }));
 
     showToast(`已将 ${itemsToRestore.length} 条台账恢复至【本行动的台账】`);
+  };
+
+  // 6.1 白名单: 加入白名单 (从台账检索 / 行动台账)
+  const handleAddToWhitelist = (selectedItems: LedgerItem[]) => {
+    if (selectedItems.length === 0) {
+      showToast('请先勾选需要加入白名单的台账');
+      return;
+    }
+    const existingWIds = new Set((currentInstConfig.tabWhitelist || []).map(l => l.id));
+    const newWItems = selectedItems
+      .filter(item => !existingWIds.has(item.id))
+      .map(item => ({
+        ...item,
+        fans: item.fans || 0,
+        collectStatus: item.collectStatus || '已采集',
+        ledgerStatus: item.ledgerStatus || '正常',
+        importSource: '手动追加' as const,
+        whitelistReason: '专项行动白名单保护账号',
+      }));
+
+    const selectedIds = new Set(selectedItems.map(i => i.id));
+    updateCurrentInstConfig(prev => ({
+      tabWhitelist: [...(prev.tabWhitelist || []), ...newWItems],
+      tab3Blacklist: (prev.tab3Blacklist || []).filter(b => !selectedIds.has(b.id)),
+      tab2SelectedIds: [],
+    }));
+
+    showToast(`已将 ${newWItems.length} 条台账加入【白名单】`);
+  };
+
+  // 6.2 白名单: 从白名单加入本专项行动台账
+  const handleRestoreWhitelistToTab1 = (ids: number[]) => {
+    if (ids.length === 0) {
+      showToast('请先勾选需要加入专项台账的记录');
+      return;
+    }
+    const itemsToRestore = (currentInstConfig.tabWhitelist || []).filter(item => ids.includes(item.id));
+    const existingTab1Ids = new Set(currentInstConfig.tab1Ledgers.map(i => i.id));
+    const newTab1Items = itemsToRestore.filter(item => !existingTab1Ids.has(item.id));
+
+    updateCurrentInstConfig(prev => ({
+      tab1Ledgers: [...prev.tab1Ledgers, ...newTab1Items],
+      tabWhitelistSelectedIds: [],
+    }));
+
+    showToast(`已将 ${itemsToRestore.length} 条白名单台账加入【本专项行动台账】`);
+  };
+
+  // 6.3 白名单: 移入黑名单
+  const handleMoveWhitelistToBlacklist = (ids: number[]) => {
+    if (ids.length === 0) {
+      showToast('请先勾选需要移入黑名单的记录');
+      return;
+    }
+    const itemsToMove = (currentInstConfig.tabWhitelist || []).filter(item => ids.includes(item.id));
+    const remainingW = (currentInstConfig.tabWhitelist || []).filter(item => !ids.includes(item.id));
+
+    const existingBlacklistIds = new Set(currentInstConfig.tab3Blacklist.map(i => i.id));
+    const newBlacklistItems = itemsToMove
+      .filter(item => !existingBlacklistIds.has(item.id))
+      .map(item => ({
+        ...item,
+        blacklistReason: '从白名单移入行动黑名单',
+      }));
+
+    updateCurrentInstConfig(prev => ({
+      tabWhitelist: remainingW,
+      tab3Blacklist: [...prev.tab3Blacklist, ...newBlacklistItems],
+      tabWhitelistSelectedIds: [],
+    }));
+
+    showToast(`已将 ${itemsToMove.length} 条台账从白名单移入【黑名单】`);
+  };
+
+  // 6.4 白名单: 从白名单移出
+  const handleDeleteFromWhitelist = (ids: number[]) => {
+    if (ids.length === 0) {
+      showToast('请先勾选需要移出的台账');
+      return;
+    }
+    const remainingW = (currentInstConfig.tabWhitelist || []).filter(item => !ids.includes(item.id));
+    updateCurrentInstConfig(() => ({
+      tabWhitelist: remainingW,
+      tabWhitelistSelectedIds: [],
+    }));
+    showToast(`已将 ${ids.length} 条台账移出白名单`);
   };
 
   // 7. Tab3: 彻底删除
@@ -1469,7 +1562,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                 </div>
               </div>
 
-              {/* 3 平级 Tabs: 本专项行动台账 | 黑名单 | 台账检索 */}
+              {/* 4 平级 Tabs: 本专项行动台账 | 白名单 | 黑名单 | 台账检索 */}
               <div className="flex items-center justify-between border-b border-gray-200">
                 <div className="flex items-center space-x-6">
                   <button
@@ -1483,6 +1576,21 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                   >
                     本专项行动台账 ({currentInstConfig.tab1Ledgers.length})
                     {currentInstConfig.activeTab === 'tab1' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'whitelist' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'whitelist'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    白名单 ({currentInstConfig.tabWhitelist?.length || 0})
+                    {currentInstConfig.activeTab === 'whitelist' && (
                       <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
                     )}
                   </button>
@@ -1547,6 +1655,22 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                 />
               )}
 
+              {/* TAB Whitelist: 白名单 */}
+              {currentInstConfig.activeTab === 'whitelist' && (
+                <TabWhitelistView
+                  whitelists={currentInstConfig.tabWhitelist || []}
+                  selectedIds={currentInstConfig.tabWhitelistSelectedIds || []}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tabWhitelistSelectedIds: ids }))
+                  }
+                  onRestoreToTab1={handleRestoreWhitelistToTab1}
+                  onMoveToBlacklist={handleMoveWhitelistToBlacklist}
+                  onDeleteFromWhitelist={handleDeleteFromWhitelist}
+                  onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
+                  onToast={showToast}
+                />
+              )}
+
               {/* TAB 3: 黑名单 */}
               {currentInstConfig.activeTab === 'tab3' && (
                 <Tab3BlacklistView
@@ -1590,6 +1714,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                       `已将 ${newItems.length} 条台账加入【本专项行动台账】`
                     );
                   }}
+                  onAddToWhitelist={handleAddToWhitelist}
                   onDirectBlacklist={selectedItems => {
                     const existingBIds = new Set(currentInstConfig.tab3Blacklist.map(l => l.id));
                     const newBItems = selectedItems
@@ -1642,7 +1767,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                 </button>
               </div>
 
-              {/* 3 平级 Tabs: 本专项行动台账 | 黑名单 | 台账检索 */}
+              {/* 4 平级 Tabs: 本专项行动台账 | 白名单 | 黑名单 | 台账检索 */}
               <div className="flex items-center justify-between border-b border-gray-200">
                 <div className="flex items-center space-x-6">
                   <button
@@ -1656,6 +1781,21 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                   >
                     本专项行动台账 ({currentInstConfig.tab1Ledgers.length})
                     {currentInstConfig.activeTab === 'tab1' && (
+                      <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateCurrentInstConfig(() => ({ activeTab: 'whitelist' }))}
+                    className={`pb-2 text-xs font-bold cursor-pointer transition relative ${
+                      currentInstConfig.activeTab === 'whitelist'
+                        ? 'text-[#1677ff]'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    白名单 ({currentInstConfig.tabWhitelist?.length || 0})
+                    {currentInstConfig.activeTab === 'whitelist' && (
                       <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#1677ff] rounded-full"></span>
                     )}
                   </button>
@@ -1720,6 +1860,22 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                 />
               )}
 
+              {/* TAB Whitelist: 白名单 */}
+              {currentInstConfig.activeTab === 'whitelist' && (
+                <TabWhitelistView
+                  whitelists={currentInstConfig.tabWhitelist || []}
+                  selectedIds={currentInstConfig.tabWhitelistSelectedIds || []}
+                  onSelectionChange={ids =>
+                    updateCurrentInstConfig(() => ({ tabWhitelistSelectedIds: ids }))
+                  }
+                  onRestoreToTab1={handleRestoreWhitelistToTab1}
+                  onMoveToBlacklist={handleMoveWhitelistToBlacklist}
+                  onDeleteFromWhitelist={handleDeleteFromWhitelist}
+                  onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
+                  onToast={showToast}
+                />
+              )}
+
               {/* TAB 3: 黑名单 */}
               {currentInstConfig.activeTab === 'tab3' && (
                 <Tab3BlacklistView
@@ -1763,6 +1919,7 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                       `已将 ${newItems.length} 条台账加入【本专项行动台账】`
                     );
                   }}
+                  onAddToWhitelist={handleAddToWhitelist}
                   onDirectBlacklist={selectedItems => {
                     const existingBIds = new Set(currentInstConfig.tab3Blacklist.map(l => l.id));
                     const newBItems = selectedItems
