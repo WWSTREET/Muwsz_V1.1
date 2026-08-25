@@ -1683,6 +1683,8 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                     updateCurrentInstConfig(() => ({ tabWhitelistSelectedIds: ids }))
                   }
                   onRestoreToTab1={handleRestoreWhitelistToTab1}
+                  onRemoveFromTab1={handleRemoveFromTab1}
+                  tab1LedgerIds={currentInstConfig.tab1Ledgers.map(l => l.id)}
                   onMoveToBlacklist={handleMoveWhitelistToBlacklist}
                   onDeleteFromWhitelist={handleDeleteFromWhitelist}
                   onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}
@@ -1888,6 +1890,8 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
                     updateCurrentInstConfig(() => ({ tabWhitelistSelectedIds: ids }))
                   }
                   onRestoreToTab1={handleRestoreWhitelistToTab1}
+                  onRemoveFromTab1={handleRemoveFromTab1}
+                  tab1LedgerIds={currentInstConfig.tab1Ledgers.map(l => l.id)}
                   onMoveToBlacklist={handleMoveWhitelistToBlacklist}
                   onDeleteFromWhitelist={handleDeleteFromWhitelist}
                   onGoToTab2={() => updateCurrentInstConfig(() => ({ activeTab: 'tab2' }))}

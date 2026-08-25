@@ -7,6 +7,8 @@ export interface TabWhitelistViewProps {
   selectedIds: number[];
   onSelectionChange: (ids: number[]) => void;
   onRestoreToTab1: (ids: number[]) => void;
+  onRemoveFromTab1?: (ids: number[]) => void;
+  tab1LedgerIds?: number[];
   onMoveToBlacklist: (ids: number[]) => void;
   onDeleteFromWhitelist: (ids: number[]) => void;
   onGoToTab2?: () => void;
@@ -18,6 +20,8 @@ export const TabWhitelistView: React.FC<TabWhitelistViewProps> = ({
   selectedIds,
   onSelectionChange,
   onRestoreToTab1,
+  onRemoveFromTab1,
+  tab1LedgerIds,
   onMoveToBlacklist,
   onDeleteFromWhitelist,
   onGoToTab2,
@@ -195,34 +199,16 @@ export const TabWhitelistView: React.FC<TabWhitelistViewProps> = ({
         }}
       />
 
-      {/* 2. 操作栏 (批量加入专项台账 / 批量移入黑名单 / 批量移出白名单) */}
+      {/* 2. 操作栏 (批量移入黑名单 / 批量移出白名单) */}
       <div className="flex items-center justify-between px-1">
         <div className="flex items-center space-x-2">
           <span className="font-bold text-gray-800 text-xs">白名单列表</span>
           <span className="text-xs text-gray-500">
             (当前已勾选 <strong className="text-[#1677ff] font-bold font-mono">{selectedIds.length}</strong> 项)
           </span>
-          <span className="px-2 py-0.5 rounded text-[11px] bg-green-50 text-green-700 border border-green-200">
-            白名单中的台账在排查中将作为重点免检/保护账号
-          </span>
         </div>
 
         <div className="flex items-center space-x-2">
-          {/* 批量加入专项台账 */}
-          <button
-            type="button"
-            disabled={selectedIds.length === 0}
-            onClick={() => onRestoreToTab1(selectedIds)}
-            className={`px-3 py-1.5 rounded text-xs font-bold cursor-pointer transition flex items-center space-x-1.5 ${
-              selectedIds.length > 0
-                ? 'bg-[#1677ff] hover:bg-[#4096ff] text-white shadow-xs'
-                : 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
-            }`}
-          >
-            <i className="fa-solid fa-plus text-xs"></i>
-            <span>批量加入专项台账 ({selectedIds.length})</span>
-          </button>
-
           {/* 批量移入黑名单 */}
           <button
             type="button"
@@ -252,17 +238,6 @@ export const TabWhitelistView: React.FC<TabWhitelistViewProps> = ({
             <i className="fa-regular fa-trash-can text-xs"></i>
             <span>移出白名单 ({selectedIds.length})</span>
           </button>
-
-          {onGoToTab2 && (
-            <button
-              type="button"
-              onClick={onGoToTab2}
-              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#1677ff] border border-blue-200 rounded text-xs font-medium cursor-pointer transition flex items-center space-x-1"
-            >
-              <i className="fa-solid fa-magnifying-glass text-xs"></i>
-              <span>前往台账检索添加</span>
-            </button>
-          )}
         </div>
       </div>
 
@@ -471,14 +446,33 @@ export const TabWhitelistView: React.FC<TabWhitelistViewProps> = ({
                     {/* 操作 */}
                     <td className="px-2 py-2 text-center">
                       <div className="flex items-center justify-center space-x-1.5 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => onRestoreToTab1([item.id])}
-                          className="text-[#1677ff] hover:text-blue-700 font-medium cursor-pointer"
-                          title="将该白名单台账加入本专项行动台账"
-                        >
-                          加入专项台账
-                        </button>
+                        {tab1LedgerIds?.includes(item.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onRemoveFromTab1) {
+                                onRemoveFromTab1([item.id]);
+                                onToast(`已将【${item.name}】移出本专项行动台账`);
+                              }
+                            }}
+                            className="text-amber-600 hover:text-amber-700 font-medium cursor-pointer"
+                            title="从本专项行动台账移出"
+                          >
+                            移出专项台账
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onRestoreToTab1([item.id]);
+                              onToast(`已将【${item.name}】加入本专项行动台账`);
+                            }}
+                            className="text-[#1677ff] hover:text-blue-700 font-medium cursor-pointer"
+                            title="加入本专项行动台账"
+                          >
+                            加入专项台账
+                          </button>
+                        )}
                         <span className="text-gray-300">|</span>
                         <button
                           type="button"
