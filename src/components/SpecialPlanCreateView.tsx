@@ -510,7 +510,15 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
       return;
     }
 
-    const itemsToRestore = currentInstConfig.tab3Blacklist.filter(item => ids.includes(item.id));
+    const itemsToRestore = currentInstConfig.tab3Blacklist
+      .filter(item => ids.includes(item.id))
+      .map(item => ({
+        ...item,
+        category: 'blacklist' as const,
+        categoryType: '黑名单' as const,
+        ledgerType: '黑名单' as const,
+        importSource: '手动追加' as const,
+      }));
     const remainingBlacklist = currentInstConfig.tab3Blacklist.filter(item => !ids.includes(item.id));
 
     const existingTab1Ids = new Set(currentInstConfig.tab1Ledgers.map(i => i.id));
@@ -536,6 +544,9 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
       .filter(item => !existingWIds.has(item.id))
       .map(item => ({
         ...item,
+        category: 'whitelist' as const,
+        categoryType: '白名单' as const,
+        ledgerType: '白名单' as const,
         fans: item.fans || 0,
         collectStatus: item.collectStatus || '已采集',
         ledgerStatus: item.ledgerStatus || '正常',
@@ -561,7 +572,15 @@ export const SpecialPlanCreateView: React.FC<SpecialPlanCreateViewProps> = ({
     }
     const itemsToRestore = (currentInstConfig.tabWhitelist || []).filter(item => ids.includes(item.id));
     const existingTab1Ids = new Set(currentInstConfig.tab1Ledgers.map(i => i.id));
-    const newTab1Items = itemsToRestore.filter(item => !existingTab1Ids.has(item.id));
+    const newTab1Items = itemsToRestore
+      .filter(item => !existingTab1Ids.has(item.id))
+      .map(item => ({
+        ...item,
+        category: 'whitelist' as const,
+        categoryType: '白名单' as const,
+        ledgerType: '白名单' as const,
+        importSource: '手动追加' as const,
+      }));
 
     updateCurrentInstConfig(prev => ({
       tab1Ledgers: [...prev.tab1Ledgers, ...newTab1Items],

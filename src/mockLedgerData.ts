@@ -64,6 +64,8 @@ export interface LedgerItem {
   ledgerStatus: string; // '正常' | '异常'
   source: LedgerSource; // 台账来源：同步匹配、批量导入、手动添加
   category: LedgerCategory; // 'normal' (-) | 'whitelist' (白名单) | 'blacklist' (黑名单)
+  ledgerType?: '白名单' | '黑名单' | string; // 台账类型：白名单、黑名单、应用属地台账/错误表述台账不显示
+  categoryType?: '白名单' | '黑名单' | string;
   addedTime?: string;
   reason?: string; // 原因 (如黑名单原因)
   authDesc?: string; // 认证信息

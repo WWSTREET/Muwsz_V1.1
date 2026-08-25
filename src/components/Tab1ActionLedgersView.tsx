@@ -268,12 +268,13 @@ export const Tab1ActionLedgersView: React.FC<Tab1ActionLedgersViewProps> = ({
                 />
               </th>
               <th className="w-10 px-1 py-2.5 text-center">序号</th>
-              <th className="w-[18%] px-2.5 py-2.5">台账名称</th>
-              <th className="w-[18%] px-2.5 py-2.5">简介</th>
-              <th className="w-[10%] px-2 py-2.5">认证/研判</th>
-              <th className="w-[11%] px-2 py-2.5">台账标签</th>
-              <th className="w-[12%] px-2 py-2.5">应用地址</th>
-              <th className="w-[13%] px-2 py-2.5">主体名称/类型</th>
+              <th className="w-[16%] px-2.5 py-2.5">台账名称</th>
+              <th className="w-[80px] px-2 py-2.5 text-center">台账类型</th>
+              <th className="w-[16%] px-2.5 py-2.5">简介</th>
+              <th className="w-[9%] px-2 py-2.5">认证/研判</th>
+              <th className="w-[10%] px-2 py-2.5">台账标签</th>
+              <th className="w-[11%] px-2 py-2.5">应用地址</th>
+              <th className="w-[12%] px-2 py-2.5">主体名称/类型</th>
               <th
                 className="w-[8%] px-2 py-2.5 text-right cursor-pointer hover:bg-gray-100 select-none"
                 onClick={toggleFansSort}
@@ -289,7 +290,7 @@ export const Tab1ActionLedgersView: React.FC<Tab1ActionLedgersViewProps> = ({
           <tbody className="divide-y divide-gray-100">
             {displayList.length === 0 ? (
               <tr>
-                <td colSpan={12} className="py-12 text-center text-gray-400">
+                <td colSpan={13} className="py-12 text-center text-gray-400">
                   <div className="flex flex-col items-center justify-center space-y-2">
                     <i className="fa-regular fa-folder-open text-2xl text-gray-300"></i>
                     <span>没有符合条件的台账记录</span>
@@ -300,6 +301,13 @@ export const Tab1ActionLedgersView: React.FC<Tab1ActionLedgersViewProps> = ({
               displayList.map((item, idx) => {
                 const isSelected = selectedIds.includes(item.id);
                 const dotStatus = item.collectDotStatus || (item.collectStatus === '已采集' ? '采集中' : '未采集');
+
+                // 判断台账类型：白名单 | 黑名单 | 应用属地台账/错误表述台账不显示
+                const itemExtended = item as any;
+                const isExplicitWhitelist = item.ledgerType === '白名单' || item.categoryType === '白名单' || itemExtended.category === 'whitelist';
+                const isExplicitBlacklist = item.ledgerType === '黑名单' || item.categoryType === '黑名单' || itemExtended.category === 'blacklist';
+                // 如果是应用属地台账（importSource === '属地导入'且未被设为白名单/黑名单）或普通/错误表述台账，则不显示台账类型
+                const isTerritoryOrNormal = itemExtended.importSource === '属地导入' && !isExplicitWhitelist && !isExplicitBlacklist;
 
                 return (
                   <tr
@@ -352,6 +360,21 @@ export const Tab1ActionLedgersView: React.FC<Tab1ActionLedgersViewProps> = ({
                           )}
                         </div>
                       </div>
+                    </td>
+
+                    {/* 台账类型 */}
+                    <td className="px-2 py-2 text-center whitespace-nowrap">
+                      {!isTerritoryOrNormal && isExplicitWhitelist ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          白名单
+                        </span>
+                      ) : !isTerritoryOrNormal && isExplicitBlacklist ? (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-200">
+                          黑名单
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 font-mono text-xs">-</span>
+                      )}
                     </td>
 
                     {/* 简介 */}
