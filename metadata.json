@@ -1,0 +1,8 @@
+{
+  "name": "MT-V1.1.1牧网守正后台管理系统",
+  "description": "牧网守正后台管理系统 - 机构管理及属地台账管理平台",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
